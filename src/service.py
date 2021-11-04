@@ -25,7 +25,7 @@ def load_model(framework_dir, checkpoints_dir):
 class Model(object):
     def __init__(self):
         self.DATA_FILE = "data.csv"
-        self.PRED_FILE = "pred.csv"
+        self.PRED_FILE = "pred.json"
         self.RUN_FILE = "run.sh"
         self.LOG_FILE = "run.log"
 
@@ -39,7 +39,7 @@ class Model(object):
     def set_framework_dir(self, dest):
         self.framework_dir = os.path.abspath(dest)
 
-    def predict(self, smiles_list):
+    def calculate(self, smiles_list):
         tmp_folder = tempfile.mkdtemp()
         data_file = os.path.join(tmp_folder, self.DATA_FILE)
         pred_file = os.path.join(tmp_folder, self.PRED_FILE)
@@ -51,7 +51,7 @@ class Model(object):
         run_file = os.path.join(tmp_folder, self.RUN_FILE)
         with open(run_file, "w") as f:
             lines = [
-                "python {0}/run_cddd.py -i {1} -o {2} --smiles_header 'smiles' --model_dir {3}/default_model/".format(
+                "python {0}/calculate.py {1} {2}".format(
                     self.framework_dir,
                     data_file,
                     pred_file,
@@ -65,19 +65,11 @@ class Model(object):
                 cmd, stdout=fp, stderr=fp, shell=True, env=os.environ
             ).wait()
         with open(pred_file, "r") as f:
-            reader = csv.reader(f)
-            h = next(reader)
+            data = json.load(f)
             R = []
-            for r in reader:
-                R += [{"embedding": [float(x) for x in r]}]
-        meta = {
-            "embedding": h
-        }
-        result = {
-            'result': R,
-            'meta': meta
-        }
-        return result
+            for d in data:
+                R += [d]
+        return R
 
 
 class Artifact(BentoServiceArtifact):
@@ -130,8 +122,8 @@ class Artifact(BentoServiceArtifact):
 @artifacts([Artifact("model")])
 class Service(BentoService):
     @api(input=JsonInput(), batch=True)
-    def predict(self, input: List[JsonSerializable]):
+    def calculate(self, input: List[JsonSerializable]):
         input = input[0]
         smiles_list = [inp["input"] for inp in input]
-        output = self.artifacts.model.predict(smiles_list)
+        output = self.artifacts.model.calculate(smiles_list)
         return [output]
